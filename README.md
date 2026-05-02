@@ -1,0 +1,87 @@
+# Axiom TUI
+
+A terminal text editor that doesn't make you feel stupid.
+
+![demo](demo.gif)
+
+I have an ubuntu server on my rpi5 running in my room and I kept needing to edit files on it. Nano works but it looks like it's from the 90s. I tried vim but it wasnt satisfactory using it thought why not make an usable, modern tui text editor for fun? I was out of ideas and I had a weekend to spare. So I built this.
+
+It's not trying to replace anything. It's just a small editor you can open from the terminal when you need to make a quick edit and you want it to not look terrible.
+
+## Install
+
+You need Python 3.11+ and Textual (python lib)
+
+**Just want to try it out?** Clone and run:
+
+```bash
+git clone https://github.com/adyanthm/axiom-tui.git
+cd axiom-tui
+pip install textual
+python main.py somefile.py
+```
+
+**Want to actually use it regularly?** Install it as a command:
+
+```bash
+git clone https://github.com/adyanthm/axiom-tui.git
+cd axiom-tui
+pip install -e .
+```
+
+Now you can open files from anywhere on your system:
+
+```bash
+axiom main.py
+axiom ~/.bashrc
+axiom /etc/nginx/nginx.conf
+```
+
+Just `axiom` and the file path. That's it. Works from any directory.
+
+## Don't want to deal with Python at all? 
+
+Grab a standalone binary from the [releases](https://github.com/adyanthm/axiom-tui/releases) page. You dont have to do anything. Just download and run everywhere!
+
+## What it does
+
+- **Syntax highlighting** for Python, JS, TS, Rust, Go, C, Java, Ruby, and a bunch more.
+- **File tree** on the left so you can browse around without leaving the editor.
+- **Search** that actually jumps to the match.
+- **Line numbers** and a status bar with cursor position.
+- **Unsaved changes indicator** (little dot next to the filename).
+- **Theme sync** - When you switch app themes the syntax colors follow along. This one took me an embarrassingly long time to figure out because Textual's TextArea has its own theme system completely separate from the app. Fun.
+
+## Keybinds
+
+| Key | Does |
+|---|---|
+| `ctrl+s` | Save |
+| `ctrl+f` | Search (Enter to find, Esc to close) |
+| `ctrl+b` | Toggle file tree |
+| `ctrl+q` | Quit |
+
+You can also switch themes through Textual's command palette.
+
+## The Theme Thing
+
+So here's a fun rabbit hole I fell into: Textual has app themes (like Dracula, Nord, Catppuccin etc) and the TextArea widget has its own completely separate syntax highlighting themes. When you switch the app theme, only the UI chrome changes - the actual code highlighting stays the same.
+
+I fixed this by mapping each app theme to the closest syntax theme. It's not perfect but it works. If you switch to Dracula the syntax goes Dracula, if you pick something light it switches to GitHub Light, etc.
+
+## Stuff I might add
+
+- [ ] Find and replace (right now it's just find)
+- [ ] Tabs for multiple files
+- [ ] Remember last open file
+- [ ] Goto line number
+
+No promises though. This is a weekend project that I use for myself. If it helps you too, cool.
+
+## Contributing
+
+PRs are welcome. Just keep it simple - the whole point is that this is a small, clean codebase. If your feature doubles the line count, maybe it should be a fork instead.
+
+## License
+
+MIT. Do whatever you want with it.

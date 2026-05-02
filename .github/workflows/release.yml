@@ -1,0 +1,80 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: axiom-tui-windows.exe
+            build_cmd: >
+              pyinstaller --onefile --name axiom-tui
+              --add-data "style.tcss;."
+              main.py
+          - os: ubuntu-latest
+            artifact: axiom-tui-linux
+            build_cmd: >
+              pyinstaller --onefile --name axiom-tui
+              --add-data "style.tcss:."
+              main.py
+          - os: macos-latest
+            artifact: axiom-tui-macos
+            build_cmd: >
+              pyinstaller --onefile --name axiom-tui
+              --add-data "style.tcss:."
+              main.py
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: install deps
+        run: |
+          pip install textual pyinstaller
+
+      - name: build
+        run: ${{ matrix.build_cmd }}
+
+      - name: rename artifact (windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          Move-Item dist/axiom-tui.exe dist/${{ matrix.artifact }}
+
+      - name: rename artifact (unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          mv dist/axiom-tui dist/${{ matrix.artifact }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
