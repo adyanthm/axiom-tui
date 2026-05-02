@@ -14,21 +14,21 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            artifact: axiom-tui-windows.exe
+            artifact: axiom.exe
             build_cmd: >
-              pyinstaller --onefile --name axiom-tui
+              pyinstaller --onefile --name axiom
               --add-data "style.tcss;."
               main.py
           - os: ubuntu-latest
-            artifact: axiom-tui-linux
+            artifact: axiom-linux
             build_cmd: >
-              pyinstaller --onefile --name axiom-tui
+              pyinstaller --onefile --name axiom
               --add-data "style.tcss:."
               main.py
           - os: macos-latest
-            artifact: axiom-tui-macos
+            artifact: axiom-macos
             build_cmd: >
-              pyinstaller --onefile --name axiom-tui
+              pyinstaller --onefile --name axiom
               --add-data "style.tcss:."
               main.py
 
@@ -52,12 +52,12 @@ jobs:
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          Move-Item dist/axiom-tui.exe dist/${{ matrix.artifact }}
+          Move-Item dist/axiom.exe dist/${{ matrix.artifact }}
 
       - name: rename artifact (unix)
         if: matrix.os != 'windows-latest'
         run: |
-          mv dist/axiom-tui dist/${{ matrix.artifact }}
+          mv dist/axiom dist/${{ matrix.artifact }}
 
       - uses: actions/upload-artifact@v4
         with:

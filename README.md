@@ -39,9 +39,36 @@ axiom /etc/nginx/nginx.conf
 
 Just `axiom` and the file path. That's it. Works from any directory.
 
-## Don't want to deal with Python at all? 
+## Don't want to deal with Python at all?
 
-Grab a standalone binary from the [releases](https://github.com/adyanthm/axiom-tui/releases) page. You dont have to do anything. Just download and run everywhere!
+Grab `axiom.exe` (or the Linux/Mac binary) from the [releases](https://github.com/adyanthm/axiom-tui/releases) page. No Python needed, everything is bundled inside.
+
+To use it as a global command (so you can just type `axiom file.py` from anywhere):
+
+**Windows:**
+1. Download `axiom.exe`
+2. Put it somewhere like `C:\tools\`
+3. Add that folder to your PATH (search "environment variables" in Start, edit the `Path` variable, add `C:\tools\`)
+4. Open a new terminal and you're good to go
+
+**Linux:**
+```bash
+chmod +x axiom-linux
+sudo mv axiom-linux /usr/local/bin/axiom
+```
+
+**Mac:**
+```bash
+chmod +x axiom-macos
+sudo mv axiom-macos /usr/local/bin/axiom
+```
+
+After that, just use it like any other command:
+```bash
+axiom server.py
+axiom ~/.bashrc
+axiom config.yml
+```
 
 ## What it does
 
