@@ -1,10 +1,10 @@
 # Axiom TUI
 
-A terminal text editor that doesn't make you feel stupid.
+A terminal text editor that doesn't make you feel lame.
 
 ![demo](demo.gif)
 
-I have an ubuntu server on my rpi5 running in my room and I kept needing to edit files on it. Nano works but it looks like it's from the 90s. I tried vim but it wasnt satisfactory using it thought why not make an usable, modern tui text editor for fun? I was out of ideas and I had a weekend to spare. So I built this.
+I have an ubuntu server on my rpi5 running in my room and I kept needing to edit files on it. Nano works but it looks like it's from the 90s. I tried vim but it wasn't satisfactory using it, So I thought why not make an usable, modern tui text editor for fun? I was out of ideas and I had a weekend to spare. So I built this.
 
 It's not trying to replace anything. It's just a small editor you can open from the terminal when you need to make a quick edit and you want it to not look terrible.
 
