@@ -42,22 +42,14 @@ jobs:
           python-version: "3.11"
 
       - name: install deps
-        run: |
-          pip install textual pyinstaller
+        run: pip install textual pyinstaller
 
       - name: build
         run: ${{ matrix.build_cmd }}
 
-      - name: rename artifact (windows)
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
-          Move-Item dist/axiom.exe dist/${{ matrix.artifact }}
-
-      - name: rename artifact (unix)
+      - name: rename artifact (unix only)
         if: matrix.os != 'windows-latest'
-        run: |
-          mv dist/axiom dist/${{ matrix.artifact }}
+        run: mv dist/axiom dist/${{ matrix.artifact }}
 
       - uses: actions/upload-artifact@v4
         with:
