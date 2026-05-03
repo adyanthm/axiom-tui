@@ -5,7 +5,3 @@ def hi(a,b):
     print("hi")
 
 print('hi')
-
-hi(4+3)
-
-
