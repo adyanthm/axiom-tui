@@ -1,6 +1,6 @@
 [project]
 name = "axiom-tui"
-version = "1.0.0"
+version = "1.0.5"
 description = "A sleek, powerful terminal text editor built with Textual"
 readme = "README.md"
 license = {text = "MIT"}
