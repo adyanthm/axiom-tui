@@ -10,26 +10,15 @@ It's not trying to replace anything. It's just a small editor you can open from 
 
 ## Install
 
-You need Python 3.11+ and Textual (python lib)
+You need Python 3.11+
 
-**Just want to try it out?** Clone and run:
-
-```bash
-git clone https://github.com/adyanthm/axiom-tui.git
-cd axiom-tui
-pip install textual
-python main.py somefile.py
-```
-
-**Want to actually use it regularly?** Install it as a command:
+**Recommended** - install from PyPI:
 
 ```bash
-git clone https://github.com/adyanthm/axiom-tui.git
-cd axiom-tui
-pip install -e .
+pip install axiom-tui
 ```
 
-Now you can open files from anywhere on your system:
+That's it. Now you can open files from anywhere:
 
 ```bash
 axiom main.py
@@ -37,9 +26,17 @@ axiom ~/.bashrc
 axiom /etc/nginx/nginx.conf
 ```
 
-Just `axiom` and the file path. That's it. Works from any directory.
+**Want to build it yourself?** Clone and install in editable mode:
 
-## Don't want to deal with Python at all?
+```bash
+git clone https://github.com/adyanthm/axiom-tui.git
+cd axiom-tui
+pip install -e .
+```
+
+This way you get the `axiom` command and any changes you make to the source take effect immediately.
+
+## Don't have Python?
 
 Grab `axiom.exe` (or the Linux/Mac binary) from the [releases](https://github.com/adyanthm/axiom-tui/releases) page. No Python needed, everything is bundled inside.
 
