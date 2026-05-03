@@ -16,22 +16,13 @@ jobs:
         include:
           - os: windows-latest
             artifact: axiom.exe
-            build_cmd: >
-              pyinstaller --onefile --name axiom
-              --add-data "style.tcss;."
-              main.py
+            build_cmd: pyinstaller --onefile --name axiom main.py
           - os: ubuntu-latest
             artifact: axiom-linux
-            build_cmd: >
-              pyinstaller --onefile --name axiom
-              --add-data "style.tcss:."
-              main.py
+            build_cmd: pyinstaller --onefile --name axiom main.py
           - os: macos-latest
             artifact: axiom-macos
-            build_cmd: >
-              pyinstaller --onefile --name axiom
-              --add-data "style.tcss:."
-              main.py
+            build_cmd: pyinstaller --onefile --name axiom main.py
 
     runs-on: ${{ matrix.os }}
 

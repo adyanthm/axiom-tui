@@ -94,7 +94,40 @@ class StatusBar(Static):
 
 class Editor(App):
     TITLE = "axiom-tui"
-    CSS_PATH = "style.tcss"
+
+    CSS = """
+    #workspace {
+        layout: horizontal;
+    }
+
+    #sidebar {
+        width: 30;
+        dock: left;
+        border-right: solid $accent;
+    }
+
+    #editor-area {
+        width: 1fr;
+    }
+
+    #editor {
+        height: 1fr;
+    }
+
+    /* hidden by default, toggled with ctrl+f */
+    #search-input {
+        width: 1fr;
+        display: none;
+    }
+
+    #status-bar {
+        dock: bottom;
+        height: 1;
+        padding: 0 1;
+        color: $text-muted;
+        background: $surface;
+    }
+    """
 
     BINDINGS = [
         Binding("ctrl+s", "save", "Save", priority=True),
