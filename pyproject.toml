@@ -1,12 +1,32 @@
 [project]
 name = "axiom-tui"
 version = "1.0.0"
-description = "a small terminal text editor built with textual"
+description = "A sleek, powerful terminal text editor built with Textual"
 readme = "README.md"
-license = "MIT"
+license = {text = "MIT"}
 requires-python = ">=3.11"
+authors = [
+    {name = "Adyanth M"}
+]
+keywords = ["tui", "editor", "textual", "terminal", "python", "code editor", "terminal editor"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Text Editors",
+    "Environment :: Console",
+]
 dependencies = ["textual>=1.0.0"]
+
+[project.urls]
+Homepage = "https://github.com/adyanthm/axiom-tui"
+Repository = "https://github.com/adyanthm/axiom-tui"
+Issues = "https://github.com/adyanthm/axiom-tui/issues"
 
 [project.scripts]
 axiom-tui = "main:run"
 axiom = "main:run"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
