@@ -199,9 +199,20 @@ class Editor(App):
 
     show_sidebar = reactive(True)
 
-    def __init__(self, file_path=None):
+    def __init__(self, target_path=None):
         super().__init__()
-        self.file_path = os.path.abspath(file_path) if file_path else None
+        
+        self.start_dir = "."
+        self.file_path = None
+        
+        if target_path:
+            abs_path = os.path.abspath(target_path)
+            if os.path.isdir(abs_path):
+                self.start_dir = abs_path
+            else:
+                self.start_dir = os.path.dirname(abs_path) or "."
+                self.file_path = abs_path
+
         self._saved_text = ""
         self.lsp = LspClient()
         self._current_lang = None
@@ -211,11 +222,7 @@ class Editor(App):
         yield Header()
 
         with Horizontal(id="workspace"):
-            start_dir = "."
-            if self.file_path:
-                start_dir = os.path.dirname(self.file_path) or "."
-
-            yield DirectoryTree(start_dir, id="sidebar")
+            yield DirectoryTree(self.start_dir, id="sidebar")
 
             with Vertical(id="editor-area"):
                 yield Input(placeholder="Search…", id="search-input")
@@ -247,15 +254,22 @@ class Editor(App):
             self._saved_text = editor.text
             status = self.query_one("#status-bar", StatusBar)
             status.filename = os.path.basename(self.file_path)
+            self.sub_title = status.filename
             if lang:
                 status.language = lang
 
             self._start_lsp(lang, editor.text)
         else:
             self._saved_text = ""
+            if self.start_dir != "." and os.path.isdir(self.start_dir):
+                self.sub_title = os.path.basename(self.start_dir)
+                self.query_one("#sidebar", DirectoryTree).focus()
+            else:
+                self.sub_title = "untitled"
 
         self._sync_editor_theme()
-        editor.focus()
+        if not self.query_one("#sidebar", DirectoryTree).has_focus:
+            editor.focus()
 
     # key handling — intercept up/down/enter/tab when the menu is open
 
@@ -287,8 +301,7 @@ class Editor(App):
         status.dirty = event.text_area.text != self._saved_text
 
         if self.lsp.running:
-            self.lsp.did_change(event.text_area.text)
-            # debounce: re-trigger completion on every keystroke
+            # debounce: sync text to server and check for completions
             self._schedule_completion()
 
     def on_text_area_selection_changed(self, event):
@@ -322,7 +335,9 @@ class Editor(App):
         self._saved_text = editor.text
         status = self.query_one("#status-bar", StatusBar)
         status.dirty = False
-        self.notify(f"Saved {os.path.basename(self.file_path)}")
+        status.filename = os.path.basename(self.file_path)
+        self.sub_title = status.filename
+        self.notify(f"Saved {status.filename}")
 
     def action_find(self):
         search = self.query_one("#search-input", Input)
@@ -367,6 +382,10 @@ class Editor(App):
         if not self.lsp.running:
             return
         editor = self.query_one("#editor", TextArea)
+        
+        # batch-sync the latest text to the server every 100ms
+        self.lsp.did_change(editor.text)
+        
         row, col = editor.cursor_location
 
         # only trigger if the cursor is at the end of a word or after a dot
@@ -446,6 +465,7 @@ class Editor(App):
 
         status = self.query_one("#status-bar", StatusBar)
         status.filename = os.path.basename(path)
+        self.sub_title = status.filename
         status.language = lang or "plain text"
         status.dirty = False
         status.line = 1

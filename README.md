@@ -23,7 +23,7 @@ That's it. Now you can open files from anywhere:
 ```bash
 axiom main.py
 axiom ~/.bashrc
-axiom /etc/nginx/nginx.conf
+axiom .  # Opens the current folder directly
 ```
 
 **Want to build it yourself?** Clone and install in editable mode:
@@ -65,13 +65,15 @@ After that, just use it like any other command:
 axiom server.py
 axiom ~/.bashrc
 axiom config.yml
+axiom /var/log/  # Opens a folder instead of a file
 ```
 
 ## What it does
 
 - **Syntax highlighting** for Python, JS, TS, Rust, Go, C, Java, Ruby, and a bunch more.
-- **Autocomplete (LSP)** for an IDE-like experience right in the terminal.
-- **File tree** on the left so you can browse around without leaving the editor.
+- **Autocomplete (LSP)** for an IDE-like experience right in the terminal (fully optimized to prevent lag on huge files).
+- **File tree** on the left so you can browse around without leaving the editor. Pass a folder (`axiom .`) to open straight into the tree.
+- **Active file indicator** right in the top header.
 - **Search** that actually jumps to the match.
 - **Line numbers** and a status bar with cursor position.
 - **Unsaved changes indicator** (little dot next to the filename).
