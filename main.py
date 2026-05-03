@@ -348,6 +348,11 @@ class Editor(App):
         sidebar = self.query_one("#sidebar", DirectoryTree)
         sidebar.display = not sidebar.display
 
+    async def action_quit(self):
+        if self.lsp.running:
+            await self.lsp.stop()
+        self.exit()
+
     def watch_theme(self, old_theme, new_theme):
         self._sync_editor_theme()
 

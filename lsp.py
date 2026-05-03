@@ -81,7 +81,19 @@ class LspClient:
         if self._reader_task:
             self._reader_task.cancel()
         if self._proc:
-            self._proc.terminate()
+            try:
+                if self._proc.stdin:
+                    self._proc.stdin.close()
+            except Exception:
+                pass
+            try:
+                self._proc.terminate()
+                await asyncio.wait_for(self._proc.wait(), timeout=1)
+            except Exception:
+                try:
+                    self._proc.kill()
+                except Exception:
+                    pass
         self._proc = None
         self._pending.clear()
 
