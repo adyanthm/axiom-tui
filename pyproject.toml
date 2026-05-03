@@ -1,6 +1,6 @@
 [project]
 name = "axiom-tui"
-version = "1.0.5"
+version = "1.0.6"
 description = "A sleek, powerful terminal text editor built with Textual"
 readme = "README.md"
 license = {text = "MIT"}
@@ -17,6 +17,9 @@ classifiers = [
     "Environment :: Console",
 ]
 dependencies = ["textual>=1.0.0"]
+
+[project.optional-dependencies]
+lsp = ["python-lsp-server"]
 
 [project.urls]
 Homepage = "https://github.com/adyanthm/axiom-tui"

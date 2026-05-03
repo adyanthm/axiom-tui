@@ -1,10 +1,13 @@
 from textual.app import App
 from textual.containers import Horizontal, Vertical
-from textual.widgets import TextArea, Header, Footer, DirectoryTree, Static, Input
+from textual.widgets import TextArea, Header, Footer, DirectoryTree, Static, Input, OptionList
+from textual.widgets.option_list import Option
 from textual.binding import Binding
 from textual.reactive import reactive
 import sys
 import os
+
+from lsp import LspClient, LANG_SERVERS
 
 # ext -> syntax lang
 LANGUAGES = {
@@ -92,6 +95,62 @@ class StatusBar(Static):
         )
 
 
+class CompletionMenu(OptionList):
+    # floating autocomplete dropdown, never takes focus
+
+    DEFAULT_CSS = """
+    CompletionMenu {
+        layer: autocomplete;
+        display: none;
+        height: auto;
+        max-height: 8;
+        width: auto;
+        min-width: 20;
+        max-width: 50;
+        border: solid $accent;
+        background: $surface;
+        padding: 0;
+    }
+    """
+
+    can_focus = False
+
+    def __init__(self):
+        super().__init__(id="completion-menu")
+        self.items = []
+
+    def show(self, items, offset):
+        self.items = items
+        self.clear_options()
+        for item in items:
+            self.add_option(Option(item["label"]))
+        self.styles.offset = offset
+        self.display = True
+        self.highlighted = 0
+
+    def hide(self):
+        self.display = False
+        self.items = []
+
+    @property
+    def visible(self):
+        return self.display and len(self.items) > 0
+
+    def move_up(self):
+        if self.highlighted is not None and self.highlighted > 0:
+            self.highlighted -= 1
+
+    def move_down(self):
+        if self.highlighted is not None and self.highlighted < self.option_count - 1:
+            self.highlighted += 1
+
+    def selected_item(self):
+        idx = self.highlighted
+        if idx is not None and idx < len(self.items):
+            return self.items[idx]
+        return None
+
+
 class Editor(App):
     TITLE = "axiom-tui"
 
@@ -108,6 +167,7 @@ class Editor(App):
 
     #editor-area {
         width: 1fr;
+        layers: default autocomplete;
     }
 
     #editor {
@@ -134,7 +194,7 @@ class Editor(App):
         Binding("ctrl+f", "find", "Find", priority=True),
         Binding("ctrl+b", "toggle_sidebar", "Sidebar"),
         Binding("ctrl+q", "quit", "Quit"),
-        Binding("escape", "dismiss_search", "Close Search", show=False),
+        Binding("escape", "dismiss", "Dismiss", show=False, priority=True),
     ]
 
     show_sidebar = reactive(True)
@@ -143,6 +203,9 @@ class Editor(App):
         super().__init__()
         self.file_path = os.path.abspath(file_path) if file_path else None
         self._saved_text = ""
+        self.lsp = LspClient()
+        self._current_lang = None
+        self._completion_timer = None
 
     def compose(self):
         yield Header()
@@ -157,6 +220,7 @@ class Editor(App):
             with Vertical(id="editor-area"):
                 yield Input(placeholder="Search…", id="search-input")
                 yield TextArea(show_line_numbers=True, id="editor")
+                yield CompletionMenu()
 
         yield StatusBar(id="status-bar")
         yield Footer()
@@ -185,17 +249,47 @@ class Editor(App):
             status.filename = os.path.basename(self.file_path)
             if lang:
                 status.language = lang
+
+            self._start_lsp(lang, editor.text)
         else:
             self._saved_text = ""
 
         self._sync_editor_theme()
         editor.focus()
 
+    # key handling — intercept up/down/enter/tab when the menu is open
+
+    def on_key(self, event):
+        menu = self.query_one("#completion-menu", CompletionMenu)
+        if not menu.visible:
+            return
+
+        if event.key == "up":
+            menu.move_up()
+            event.prevent_default()
+            event.stop()
+        elif event.key == "down":
+            menu.move_down()
+            event.prevent_default()
+            event.stop()
+        elif event.key in ("enter", "tab"):
+            item = menu.selected_item()
+            if item:
+                self._insert_completion(item["insert"])
+            menu.hide()
+            event.prevent_default()
+            event.stop()
+
     # events
 
     def on_text_area_changed(self, event):
         status = self.query_one("#status-bar", StatusBar)
         status.dirty = event.text_area.text != self._saved_text
+
+        if self.lsp.running:
+            self.lsp.did_change(event.text_area.text)
+            # debounce: re-trigger completion on every keystroke
+            self._schedule_completion()
 
     def on_text_area_selection_changed(self, event):
         cursor = event.text_area.cursor_location
@@ -238,7 +332,13 @@ class Editor(App):
         else:
             self.query_one("#editor", TextArea).focus()
 
-    def action_dismiss_search(self):
+    def action_dismiss(self):
+        # dismiss completion menu first, then search bar
+        menu = self.query_one("#completion-menu", CompletionMenu)
+        if menu.visible:
+            menu.hide()
+            return
+
         search = self.query_one("#search-input", Input)
         if search.display:
             search.display = False
@@ -250,6 +350,67 @@ class Editor(App):
 
     def watch_theme(self, old_theme, new_theme):
         self._sync_editor_theme()
+
+    # completion logic
+
+    def _schedule_completion(self):
+        if self._completion_timer:
+            self._completion_timer.stop()
+        self._completion_timer = self.set_timer(0.1, self._trigger_completion)
+
+    def _trigger_completion(self):
+        if not self.lsp.running:
+            return
+        editor = self.query_one("#editor", TextArea)
+        row, col = editor.cursor_location
+
+        # only trigger if the cursor is at the end of a word or after a dot
+        lines = editor.text.split("\n")
+        if row < len(lines) and col > 0:
+            ch = lines[row][col - 1]
+            if ch.isalnum() or ch == "_" or ch == ".":
+                self.run_worker(self._fetch_completions(row, col), exclusive=True, group="completion")
+                return
+
+        # nothing worth completing, hide the menu
+        menu = self.query_one("#completion-menu", CompletionMenu)
+        if menu.visible:
+            menu.hide()
+
+    async def _fetch_completions(self, row, col):
+        items = await self.lsp.complete(row, col)
+        menu = self.query_one("#completion-menu", CompletionMenu)
+
+        if not items:
+            menu.hide()
+            return
+
+        editor = self.query_one("#editor", TextArea)
+
+        # position the menu near the cursor
+        cursor_offset = editor.cursor_screen_offset
+        area_region = self.query_one("#editor-area").region
+
+        x = cursor_offset.x - area_region.x
+        y = cursor_offset.y - area_region.y + 1
+
+        menu.show(items, (x, y))
+
+    def _insert_completion(self, text):
+        editor = self.query_one("#editor", TextArea)
+        row, col = editor.cursor_location
+
+        # walk back to find where the current word starts
+        lines = editor.text.split("\n")
+        line = lines[row] if row < len(lines) else ""
+        word_start = col
+        while word_start > 0 and (line[word_start - 1].isalnum() or line[word_start - 1] == "_"):
+            word_start -= 1
+
+        # strip parentheses/signatures from insert text (e.g. "getcwd()" -> "getcwd")
+        clean = text.split("(")[0] if "(" in text else text
+
+        editor.replace(clean, (row, word_start), (row, col))
 
     # helpers
 
@@ -285,7 +446,27 @@ class Editor(App):
         status.line = 1
         status.col = 1
 
+        self._start_lsp(lang, content)
         editor.focus()
+
+    def _start_lsp(self, lang, text):
+        if not lang or lang not in LANG_SERVERS:
+            return
+
+        if lang != self._current_lang:
+            self.run_worker(self._swap_lsp(lang, text), exclusive=True, group="lsp")
+        elif self.lsp.running:
+            self.lsp.did_open(self.file_path, text)
+
+    async def _swap_lsp(self, lang, text):
+        await self.lsp.stop()
+        root = os.path.dirname(self.file_path) or "."
+        ok = await self.lsp.start(lang, root)
+        if ok:
+            self._current_lang = lang
+            self.lsp.did_open(self.file_path, text)
+        else:
+            self._current_lang = None
 
     def _run_search(self, query):
         if not query:

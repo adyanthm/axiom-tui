@@ -70,6 +70,7 @@ axiom config.yml
 ## What it does
 
 - **Syntax highlighting** for Python, JS, TS, Rust, Go, C, Java, Ruby, and a bunch more.
+- **Autocomplete (LSP)** for an IDE-like experience right in the terminal.
 - **File tree** on the left so you can browse around without leaving the editor.
 - **Search** that actually jumps to the match.
 - **Line numbers** and a status bar with cursor position.
@@ -86,6 +87,27 @@ axiom config.yml
 | `ctrl+q` | Quit |
 
 You can also switch themes through Textual's command palette.
+
+## Autocomplete (LSP)
+
+I added Language Server Protocol (LSP) support so you get live, IDE-like autocomplete dropdowns as you type. Navigate with `Up`/`Down` and accept with `Tab`
+
+Because language servers are huge, I didn't bundle them all by default. It's smart enough to just degrade gracefully to a normal editor if you don't have the server installed.
+
+**For Python:**
+Just install the editor with the `[lsp]` extra and you're good to go:
+```bash
+pip install axiom-tui[lsp]
+```
+*(This just installs `python-lsp-server` alongside the editor).*
+
+**For other languages:**
+It works for other languages too, you just need to have their respective language servers installed on your system. Axiom will automatically find them and connect.
+
+*   **JS/TS**: needs `typescript-language-server`
+*   **Rust**: needs `rust-analyzer`
+*   **Go**: needs `gopls`
+*   **C / C++**: needs `clangd`
 
 ## The Theme Thing
 
