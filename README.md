@@ -70,20 +70,24 @@ axiom /var/log/  # Opens a folder instead of a file
 
 ## What it does
 
+- **Multi-Tab Support** - Open multiple files at once. They'll show up as tabs at the top. Close them with `ctrl+w`.
+- **Quick File Creation** - Hit `ctrl+n` to pull up a floating box. Type a name to create a file, or add a `/` at the end to create a folder.
 - **Syntax highlighting** for Python, JS, TS, Rust, Go, C, Java, Ruby, and a bunch more.
-- **Autocomplete (LSP)** for an IDE-like experience right in the terminal (fully optimized to prevent lag on huge files).
+- **Autocomplete (LSP)** for an IDE-like experience right in the terminal.
 - **File tree** on the left so you can browse around without leaving the editor. Pass a folder (`axiom .`) to open straight into the tree.
 - **Active file indicator** right in the top header.
 - **Search** that actually jumps to the match.
 - **Line numbers** and a status bar with cursor position.
 - **Unsaved changes indicator** (little dot next to the filename).
-- **Theme sync** - When you switch app themes the syntax colors follow along. This one took me an embarrassingly long time to figure out because Textual's TextArea has its own theme system completely separate from the app. Fun.
+- **Theme sync** - When you switch app themes the syntax colors follow along. The default is `textual-dark`, but I also added a sleek custom `axiom-pro` theme!
 
 ## Keybinds
 
 | Key | Does |
 |---|---|
 | `ctrl+s` | Save |
+| `ctrl+n` | Create new file or folder |
+| `ctrl+w` | Close current tab |
 | `ctrl+f` | Search (Enter to find, Esc to close) |
 | `ctrl+b` | Toggle file tree |
 | `ctrl+q` | Quit |
@@ -120,7 +124,6 @@ I fixed this by mapping each app theme to the closest syntax theme. It's not per
 ## Stuff I might add
 
 - [ ] Find and replace (right now it's just find)
-- [ ] Tabs for multiple files
 - [ ] Remember last open file
 - [ ] Goto line number
 

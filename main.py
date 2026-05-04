@@ -1,11 +1,14 @@
 from textual.app import App
 from textual.containers import Horizontal, Vertical
-from textual.widgets import TextArea, Header, Footer, DirectoryTree, Static, Input, OptionList
+from textual.widgets import TextArea, Header, Footer, DirectoryTree, Static, Input, OptionList, TabbedContent, TabPane
 from textual.widgets.option_list import Option
 from textual.binding import Binding
 from textual.reactive import reactive
+from textual.theme import Theme
 import sys
 import os
+import hashlib
+from pathlib import Path
 
 from lsp import LspClient, LANG_SERVERS
 
@@ -38,8 +41,6 @@ LANGUAGES = {
     ".hpp": "cpp",
 }
 
-# textarea has its own theme system separate from the app theme,
-# so we map each app theme to the closest editor theme
 EDITOR_THEMES = {
     "textual-dark": "vscode_dark",
     "textual-light": "github_light",
@@ -62,13 +63,12 @@ EDITOR_THEMES = {
     "atom-one-light": "github_light",
     "ansi-dark": "vscode_dark",
     "ansi-light": "github_light",
+    "axiom-pro": "dracula",
 }
-
 
 def detect_language(path):
     _, ext = os.path.splitext(path)
     return LANGUAGES.get(ext.lower())
-
 
 def safe_read(path):
     try:
@@ -77,9 +77,7 @@ def safe_read(path):
     except (OSError, UnicodeDecodeError):
         return None
 
-
 class StatusBar(Static):
-    # bottom bar showing cursor pos, lang, unsaved indicator
     line = reactive(1)
     col = reactive(1)
     language = reactive("plain text")
@@ -94,31 +92,25 @@ class StatusBar(Static):
             f"    {self.language}"
         )
 
-
 class CompletionMenu(OptionList):
-    # floating autocomplete dropdown, never takes focus
-
     DEFAULT_CSS = """
     CompletionMenu {
         layer: autocomplete;
         display: none;
         height: auto;
-        max-height: 8;
+        max-height: 10;
         width: auto;
-        min-width: 20;
-        max-width: 50;
-        border: solid $accent;
+        min-width: 30;
+        max-width: 60;
+        border: round $accent;
         background: $surface;
         padding: 0;
     }
     """
-
     can_focus = False
-
     def __init__(self):
         super().__init__(id="completion-menu")
         self.items = []
-
     def show(self, items, offset):
         self.items = items
         self.clear_options()
@@ -127,29 +119,55 @@ class CompletionMenu(OptionList):
         self.styles.offset = offset
         self.display = True
         self.highlighted = 0
-
     def hide(self):
         self.display = False
         self.items = []
-
     @property
     def visible(self):
         return self.display and len(self.items) > 0
-
     def move_up(self):
         if self.highlighted is not None and self.highlighted > 0:
             self.highlighted -= 1
-
     def move_down(self):
         if self.highlighted is not None and self.highlighted < self.option_count - 1:
             self.highlighted += 1
-
     def selected_item(self):
         idx = self.highlighted
         if idx is not None and idx < len(self.items):
             return self.items[idx]
         return None
 
+class NewFileDialog(Vertical):
+    DEFAULT_CSS = """
+    NewFileDialog {
+        layer: overlay;
+        display: none;
+        width: 65;
+        height: auto;
+        border: round $accent;
+        background: $surface;
+        padding: 0 1;
+        offset-x: 25;
+        offset-y: 2;
+    }
+    NewFileDialog Input {
+        border: none;
+        background: transparent;
+    }
+    NewFileDialog Input:focus {
+        border: none;
+    }
+    """
+    def compose(self):
+        yield Input(id="new-file-input")
+
+    def on_mount(self):
+        self.border_title = "Add a new file or directory (directories end with a '/')"
+
+    def on_input_submitted(self, event):
+        self.app.action_create_file(event.value)
+        self.display = False
+        event.input.value = ""
 
 class Editor(App):
     TITLE = "axiom-tui"
@@ -162,15 +180,14 @@ class Editor(App):
     #sidebar {
         width: 30;
         dock: left;
-        border-right: solid $accent;
     }
 
     #editor-area {
         width: 1fr;
-        layers: default autocomplete;
+        layers: default autocomplete overlay;
     }
 
-    #editor {
+    #tabs {
         height: 1fr;
     }
 
@@ -192,6 +209,8 @@ class Editor(App):
     BINDINGS = [
         Binding("ctrl+s", "save", "Save", priority=True),
         Binding("ctrl+f", "find", "Find", priority=True),
+        Binding("ctrl+n", "new_file", "New File"),
+        Binding("ctrl+w", "close_tab", "Close Tab"),
         Binding("ctrl+b", "toggle_sidebar", "Sidebar"),
         Binding("ctrl+q", "quit", "Quit"),
         Binding("escape", "dismiss", "Dismiss", show=False, priority=True),
@@ -213,7 +232,8 @@ class Editor(App):
                 self.start_dir = os.path.dirname(abs_path) or "."
                 self.file_path = abs_path
 
-        self._saved_text = ""
+        self.open_files = {} # abs_path -> content
+        self.pane_to_path = {} # pane_id -> abs_path
         self.lsp = LspClient()
         self._current_lang = None
         self._completion_timer = None
@@ -225,53 +245,50 @@ class Editor(App):
             yield DirectoryTree(self.start_dir, id="sidebar")
 
             with Vertical(id="editor-area"):
+                yield NewFileDialog(id="new-file-dialog")
                 yield Input(placeholder="Search…", id="search-input")
-                yield TextArea(show_line_numbers=True, id="editor")
+                yield TabbedContent(id="tabs")
                 yield CompletionMenu()
 
         yield StatusBar(id="status-bar")
         yield Footer()
 
     def on_mount(self):
-        editor = self.query_one("#editor", TextArea)
+        self.register_theme(
+            Theme(
+                name="axiom-pro",
+                primary="#f5a97f",
+                secondary="#8aadf4",
+                background="#1e1e2e",
+                surface="#1e1e2e",
+                panel="#1e1e2e",
+                warning="#eed49f",
+                error="#ed8796",
+                success="#a6da95",
+                accent="#f5a97f",
+                dark=True,
+            )
+        )
+        self.theme = "textual-dark"
 
         if self.file_path:
-            lang = detect_language(self.file_path)
-            if lang:
-                try:
-                    editor.language = lang
-                except Exception:
-                    pass
-
-            content = safe_read(self.file_path)
-            if content is not None:
-                editor.text = content
-            else:
-                editor.text = ""
-                if os.path.exists(self.file_path):
-                    self.notify(f"Could not read {self.file_path}", severity="error")
-
-            self._saved_text = editor.text
-            status = self.query_one("#status-bar", StatusBar)
-            status.filename = os.path.basename(self.file_path)
-            self.sub_title = status.filename
-            if lang:
-                status.language = lang
-
-            self._start_lsp(lang, editor.text)
+            self._open_file(self.file_path)
         else:
-            self._saved_text = ""
             if self.start_dir != "." and os.path.isdir(self.start_dir):
                 self.sub_title = os.path.basename(self.start_dir)
                 self.query_one("#sidebar", DirectoryTree).focus()
             else:
                 self.sub_title = "untitled"
 
-        self._sync_editor_theme()
-        if not self.query_one("#sidebar", DirectoryTree).has_focus:
-            editor.focus()
-
-    # key handling — intercept up/down/enter/tab when the menu is open
+    def _get_active_editor(self):
+        tabs = self.query_one("#tabs", TabbedContent)
+        if not tabs.active:
+            return None
+        try:
+            pane = self.query_one(f"#{tabs.active}", TabPane)
+            return pane.query_one(TextArea)
+        except Exception:
+            return None
 
     def on_key(self, event):
         menu = self.query_one("#completion-menu", CompletionMenu)
@@ -294,33 +311,56 @@ class Editor(App):
             event.prevent_default()
             event.stop()
 
-    # events
-
     def on_text_area_changed(self, event):
-        status = self.query_one("#status-bar", StatusBar)
-        status.dirty = event.text_area.text != self._saved_text
+        editor = self._get_active_editor()
+        if editor and event.text_area == editor and self.file_path:
+            status = self.query_one("#status-bar", StatusBar)
+            saved_text = self.open_files.get(self.file_path, "")
+            status.dirty = event.text_area.text != saved_text
 
         if self.lsp.running:
-            # debounce: sync text to server and check for completions
             self._schedule_completion()
 
     def on_text_area_selection_changed(self, event):
-        cursor = event.text_area.cursor_location
-        status = self.query_one("#status-bar", StatusBar)
-        status.line = cursor[0] + 1
-        status.col = cursor[1] + 1
+        editor = self._get_active_editor()
+        if editor and event.text_area == editor:
+            cursor = event.text_area.cursor_location
+            status = self.query_one("#status-bar", StatusBar)
+            status.line = cursor[0] + 1
+            status.col = cursor[1] + 1
 
     def on_directory_tree_file_selected(self, event):
         self._open_file(str(event.path))
+
+    def on_tabbed_content_tab_activated(self, event):
+        if not event.pane or not event.pane.id or not event.pane.id.startswith("tab-"):
+            return
+            
+        pane_id = event.pane.id
+        abs_path = self.pane_to_path.get(pane_id)
+        if not abs_path:
+            return
+            
+        self.file_path = abs_path
+        
+        try:
+            editor = event.pane.query_one(TextArea)
+            self._update_status_bar(abs_path, editor)
+            editor.focus()
+            
+            lang = detect_language(abs_path)
+            self._start_lsp(lang, editor.text)
+        except Exception:
+            pass
 
     def on_input_submitted(self, event):
         if event.input.id == "search-input":
             self._run_search(event.value)
 
-    # actions
-
     def action_save(self):
-        editor = self.query_one("#editor", TextArea)
+        editor = self._get_active_editor()
+        if not editor:
+            return
 
         if not self.file_path:
             self.file_path = os.path.abspath("untitled.txt")
@@ -332,12 +372,9 @@ class Editor(App):
             self.notify(f"Save failed: {exc}", severity="error")
             return
 
-        self._saved_text = editor.text
-        status = self.query_one("#status-bar", StatusBar)
-        status.dirty = False
-        status.filename = os.path.basename(self.file_path)
-        self.sub_title = status.filename
-        self.notify(f"Saved {status.filename}")
+        self.open_files[self.file_path] = editor.text
+        self._update_status_bar(self.file_path, editor)
+        self.notify(f"Saved {os.path.basename(self.file_path)}")
 
     def action_find(self):
         search = self.query_one("#search-input", Input)
@@ -345,19 +382,88 @@ class Editor(App):
         if search.display:
             search.focus()
         else:
-            self.query_one("#editor", TextArea).focus()
+            editor = self._get_active_editor()
+            if editor:
+                editor.focus()
 
+    def action_new_file(self):
+        dialog = self.query_one("#new-file-dialog", NewFileDialog)
+        dialog.display = True
+        self.query_one("#new-file-input", Input).focus()
+
+    def action_create_file(self, path):
+        if not path:
+            return
+            
+        tree = self.query_one("#sidebar", DirectoryTree)
+        if tree.cursor_node and tree.cursor_node.data:
+            node_path = Path(tree.cursor_node.data.path)
+            if node_path.is_file():
+                parent_dir = node_path.parent
+            else:
+                parent_dir = node_path
+        else:
+            parent_dir = Path(self.start_dir)
+            
+        safe_path = path.lstrip("/\\")
+        full_path = parent_dir / safe_path
+        
+        if full_path.exists():
+            self.notify(f"'{full_path.name}' already exists", severity="error")
+            return
+
+        try:
+            if path.endswith("/") or path.endswith("\\"):
+                full_path.mkdir(parents=True, exist_ok=True)
+                self.notify(f"Created directory {full_path.name}")
+            else:
+                full_path.parent.mkdir(parents=True, exist_ok=True)
+                full_path.touch(exist_ok=True)
+                self._open_file(str(full_path))
+        except OSError as e:
+            self.notify(f"Failed to create: {e}", severity="error")
+            return
+            
+        if hasattr(tree, "reload"):
+            tree.reload()
+
+    def action_close_tab(self):
+        tabs = self.query_one("#tabs", TabbedContent)
+        if not tabs.active:
+            return
+            
+        pane_id = tabs.active
+        abs_path = self.pane_to_path.get(pane_id)
+        
+        tabs.remove_pane(pane_id)
+        if abs_path and abs_path in self.open_files:
+            del self.open_files[abs_path]
+            del self.pane_to_path[pane_id]
+            
+        if not self.open_files:
+            self.file_path = None
+            self.sub_title = "untitled"
+            
     def action_dismiss(self):
-        # dismiss completion menu first, then search bar
         menu = self.query_one("#completion-menu", CompletionMenu)
         if menu.visible:
             menu.hide()
             return
 
+        dialog = self.query_one("#new-file-dialog", NewFileDialog)
+        if dialog.display:
+            dialog.display = False
+            editor = self._get_active_editor()
+            if editor:
+                editor.focus()
+            return
+
         search = self.query_one("#search-input", Input)
         if search.display:
             search.display = False
-            self.query_one("#editor", TextArea).focus()
+            editor = self._get_active_editor()
+            if editor:
+                editor.focus()
 
     def action_toggle_sidebar(self):
         sidebar = self.query_one("#sidebar", DirectoryTree)
@@ -369,9 +475,8 @@ class Editor(App):
         self.exit()
 
     def watch_theme(self, old_theme, new_theme):
-        self._sync_editor_theme()
-
-    # completion logic
+        for editor in self.query(TextArea):
+            self._sync_editor_theme_for(editor)
 
     def _schedule_completion(self):
         if self._completion_timer:
@@ -381,14 +486,17 @@ class Editor(App):
     def _trigger_completion(self):
         if not self.lsp.running:
             return
-        editor = self.query_one("#editor", TextArea)
-        
-        # batch-sync the latest text to the server every 100ms
+        editor = self._get_active_editor()
+        if not editor:
+            return
+            
+        lang = detect_language(self.file_path)
+        if lang != self._current_lang:
+            return
+            
         self.lsp.did_change(editor.text)
         
         row, col = editor.cursor_location
-
-        # only trigger if the cursor is at the end of a word or after a dot
         lines = editor.text.split("\n")
         if row < len(lines) and col > 0:
             ch = lines[row][col - 1]
@@ -396,7 +504,6 @@ class Editor(App):
                 self.run_worker(self._fetch_completions(row, col), exclusive=True, group="completion")
                 return
 
-        # nothing worth completing, hide the menu
         menu = self.query_one("#completion-menu", CompletionMenu)
         if menu.visible:
             menu.hide()
@@ -409,9 +516,10 @@ class Editor(App):
             menu.hide()
             return
 
-        editor = self.query_one("#editor", TextArea)
+        editor = self._get_active_editor()
+        if not editor:
+            return
 
-        # position the menu near the cursor
         cursor_offset = editor.cursor_screen_offset
         area_region = self.query_one("#editor-area").region
 
@@ -421,61 +529,85 @@ class Editor(App):
         menu.show(items, (x, y))
 
     def _insert_completion(self, text):
-        editor = self.query_one("#editor", TextArea)
+        editor = self._get_active_editor()
+        if not editor:
+            return
         row, col = editor.cursor_location
 
-        # walk back to find where the current word starts
         lines = editor.text.split("\n")
         line = lines[row] if row < len(lines) else ""
         word_start = col
         while word_start > 0 and (line[word_start - 1].isalnum() or line[word_start - 1] == "_"):
             word_start -= 1
 
-        # strip parentheses/signatures from insert text (e.g. "getcwd()" -> "getcwd")
         clean = text.split("(")[0] if "(" in text else text
-
         editor.replace(clean, (row, word_start), (row, col))
 
-    # helpers
-
-    def _sync_editor_theme(self):
-        # keep syntax highlighting in sync with the app theme
-        editor = self.query_one("#editor", TextArea)
+    def _sync_editor_theme_for(self, editor):
         target = EDITOR_THEMES.get(self.theme, "vscode_dark")
         if editor.theme != target:
             editor.theme = target
 
     def _open_file(self, path):
-        content = safe_read(path)
+        abs_path = os.path.abspath(path)
+        tabs = self.query_one("#tabs", TabbedContent)
+        
+        pane_id = "tab-" + hashlib.md5(abs_path.encode()).hexdigest()
+        
+        if abs_path in self.open_files:
+            tabs.active = pane_id
+            return
+
+        content = safe_read(abs_path)
         if content is None:
             self.notify(f"Cannot read {path}", severity="error")
             return
 
-        self.file_path = os.path.abspath(path)
-        editor = self.query_one("#editor", TextArea)
-        editor.text = content
+        self.open_files[abs_path] = content
+        self.pane_to_path[pane_id] = abs_path
+        self.file_path = abs_path
+        
+        filename = os.path.basename(abs_path)
+        editor_id = "editor-" + hashlib.md5(abs_path.encode()).hexdigest()
+        editor = TextArea(content, show_line_numbers=True, id=editor_id)
+        
+        lang = detect_language(abs_path)
+        if lang:
+            try:
+                editor.language = lang
+            except Exception:
+                pass
+                
+        pane = TabPane(filename, editor, id=pane_id)
+        tabs.add_pane(pane)
+        tabs.active = pane_id
 
-        lang = detect_language(path)
-        try:
-            editor.language = lang
-        except Exception:
-            pass
+        self._sync_editor_theme_for(editor)
+        self._start_lsp(lang, content)
+        
+        self.call_after_refresh(editor.focus)
+        self._update_status_bar(abs_path, editor)
 
-        self._saved_text = content
-
+    def _update_status_bar(self, path, editor):
         status = self.query_one("#status-bar", StatusBar)
         status.filename = os.path.basename(path)
         self.sub_title = status.filename
+        
+        lang = detect_language(path)
         status.language = lang or "plain text"
-        status.dirty = False
-        status.line = 1
-        status.col = 1
-
-        self._start_lsp(lang, content)
-        editor.focus()
+        
+        saved_text = self.open_files.get(path, "")
+        status.dirty = editor.text != saved_text
+        
+        cursor = editor.cursor_location
+        status.line = cursor[0] + 1
+        status.col = cursor[1] + 1
 
     def _start_lsp(self, lang, text):
         if not lang or lang not in LANG_SERVERS:
+            if self.lsp.running:
+                self.run_worker(self.lsp.stop(), exclusive=True, group="lsp")
+                self._current_lang = None
             return
 
         if lang != self._current_lang:
@@ -497,7 +629,10 @@ class Editor(App):
         if not query:
             return
 
-        editor = self.query_one("#editor", TextArea)
+        editor = self._get_active_editor()
+        if not editor:
+            return
+            
         text = editor.text
         idx = text.find(query)
 
@@ -505,7 +640,6 @@ class Editor(App):
             self.notify(f'No results for "{query}"', severity="warning")
             return
 
-        # string index -> (row, col)
         row = text[:idx].count("\n")
         last_nl = text.rfind("\n", 0, idx)
         col = idx if last_nl == -1 else idx - last_nl - 1
@@ -514,11 +648,9 @@ class Editor(App):
         editor.focus()
         self.notify(f'Found "{query}" at Ln {row + 1}')
 
-
 def run():
     path = sys.argv[1] if len(sys.argv) > 1 else None
     Editor(path).run()
-
 
 if __name__ == "__main__":
     run()
