@@ -70,11 +70,14 @@ axiom /var/log/  # Opens a folder instead of a file
 
 ## What it does
 
-- **Multi-Tab Support** - Open multiple files at once. They'll show up as tabs at the top. Close them with `ctrl+w`.
+- **Multi-Tab Support** - Open multiple files at once. They'll show up as tabs at the top. Close them with `ctrl+w`, switch between them with `ctrl+pageup`/`ctrl+pagedown`.
 - **Quick File Creation** - Hit `ctrl+n` to pull up a floating box. Type a name to create a file, or add a `/` at the end to create a folder.
 - **Syntax highlighting** for Python, JS, TS, Rust, Go, C, Java, Ruby, and a bunch more.
+- **Auto-indent** - Pressing Enter keeps the current indentation level. After lines ending with `:`, `{`, `[`, or `(` it adds an extra indent automatically. Tab inserts 4 spaces.
+- **Go to Definition** - Press `F12` on any symbol and Axiom will jump to its definition (same file or different file). Needs an LSP server running.
 - **Autocomplete (LSP)** for an IDE-like experience right in the terminal.
 - **File tree** on the left so you can browse around without leaving the editor. Pass a folder (`axiom .`) to open straight into the tree.
+- **Keyboard navigation** - Since Tab inserts spaces in the editor, use `Escape` to leave the editor, `ctrl+e` to jump to the file explorer, and `ctrl+b` to toggle the sidebar.
 - **Active file indicator** right in the top header.
 - **Search** that actually jumps to the match.
 - **Line numbers** and a status bar with cursor position.
@@ -90,9 +93,15 @@ axiom /var/log/  # Opens a folder instead of a file
 | `ctrl+w` | Close current tab |
 | `ctrl+f` | Search (Enter to find, Esc to close) |
 | `ctrl+b` | Toggle file tree |
+| `ctrl+e` | Focus file explorer |
+| `ctrl+pageup` | Previous tab |
+| `ctrl+pagedown` | Next tab |
+| `F12` | Go to definition (needs LSP) |
+| `Tab` | Insert 4 spaces (in editor) |
+| `Escape` | Leave editor / dismiss dialogs |
 | `ctrl+q` | Quit |
 
-You can also switch themes through Textual's command palette.
+Since `Tab` inserts spaces inside the editor, use `Escape` to leave the editor and navigate to other parts of the UI. You can also switch themes through Textual's command palette.
 
 ## Autocomplete (LSP)
 
@@ -126,6 +135,8 @@ I fixed this by mapping each app theme to the closest syntax theme. It's not per
 - [ ] Find and replace (right now it's just find)
 - [ ] Remember last open file
 - [ ] Goto line number
+- [x] ~~Auto-indent~~
+- [x] ~~Go to definition~~
 
 No promises though. This is a weekend project that I use for myself. If it helps you too, cool.
 

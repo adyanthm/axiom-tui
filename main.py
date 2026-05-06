@@ -10,7 +10,7 @@ import os
 import hashlib
 from pathlib import Path
 
-from lsp import LspClient, LANG_SERVERS
+from lsp import LspClient, LANG_SERVERS, uri_to_path
 
 # ext -> syntax lang
 LANGUAGES = {
@@ -76,6 +76,44 @@ def safe_read(path):
             return f.read()
     except (OSError, UnicodeDecodeError):
         return None
+
+class AxiomEditor(TextArea):
+    """TextArea with auto-indent and tab-as-spaces."""
+
+    def on_mount(self):
+        self.indent_width = 4
+        self.indent_type = "spaces"
+        self.tab_behavior = "indent"
+
+    async def _on_key(self, event):
+        if not self.read_only and event.key == "enter":
+            event.stop()
+            event.prevent_default()
+
+            row, col = self.cursor_location
+            lines = self.text.split("\n")
+            current_line = lines[row] if row < len(lines) else ""
+
+            # match existing indentation
+            indent = 0
+            for ch in current_line:
+                if ch == " ":
+                    indent += 1
+                elif ch == "\t":
+                    indent += self.indent_width
+                else:
+                    break
+
+            # smart indent: increase after block openers
+            text_before = current_line[:col].rstrip()
+            if text_before and text_before[-1] in (":", "{", "[", "("):
+                indent += self.indent_width
+
+            start, end = self.selection
+            self._replace_via_keyboard("\n" + " " * indent, start, end)
+            return
+
+        await super()._on_key(event)
 
 class StatusBar(Static):
     line = reactive(1)
@@ -212,6 +250,10 @@ class Editor(App):
         Binding("ctrl+n", "new_file", "New File"),
         Binding("ctrl+w", "close_tab", "Close Tab"),
         Binding("ctrl+b", "toggle_sidebar", "Sidebar"),
+        Binding("ctrl+e", "focus_sidebar", "Explorer", priority=True),
+        Binding("ctrl+pageup", "prev_tab", "Prev Tab", show=False, priority=True),
+        Binding("ctrl+pagedown", "next_tab", "Next Tab", show=False, priority=True),
+        Binding("f12", "goto_definition", "Go to Definition", priority=True),
         Binding("ctrl+q", "quit", "Quit"),
         Binding("escape", "dismiss", "Dismiss", show=False, priority=True),
     ]
@@ -438,11 +480,19 @@ class Editor(App):
         tabs.remove_pane(pane_id)
         if abs_path and abs_path in self.open_files:
             del self.open_files[abs_path]
+        if pane_id in self.pane_to_path:
             del self.pane_to_path[pane_id]
             
         if not self.open_files:
             self.file_path = None
             self.sub_title = "untitled"
+        else:
+            # update file_path to the now-active tab
+            new_active = tabs.active
+            new_path = self.pane_to_path.get(new_active)
+            if new_path:
+                self.file_path = new_path
+                self.sub_title = os.path.basename(new_path)
             
     def action_dismiss(self):
         menu = self.query_one("#completion-menu", CompletionMenu)
@@ -468,6 +518,66 @@ class Editor(App):
     def action_toggle_sidebar(self):
         sidebar = self.query_one("#sidebar", DirectoryTree)
         sidebar.display = not sidebar.display
+        if sidebar.display:
+            sidebar.focus()
+        else:
+            editor = self._get_active_editor()
+            if editor:
+                editor.focus()
+
+    def action_focus_sidebar(self):
+        sidebar = self.query_one("#sidebar", DirectoryTree)
+        if not sidebar.display:
+            sidebar.display = True
+        sidebar.focus()
+
+    def action_prev_tab(self):
+        tabs = self.query_one("#tabs", TabbedContent)
+        pane_ids = [p.id for p in tabs.query(TabPane) if p.id]
+        if not pane_ids or not tabs.active:
+            return
+        idx = pane_ids.index(tabs.active) if tabs.active in pane_ids else 0
+        tabs.active = pane_ids[(idx - 1) % len(pane_ids)]
+
+    def action_next_tab(self):
+        tabs = self.query_one("#tabs", TabbedContent)
+        pane_ids = [p.id for p in tabs.query(TabPane) if p.id]
+        if not pane_ids or not tabs.active:
+            return
+        idx = pane_ids.index(tabs.active) if tabs.active in pane_ids else 0
+        tabs.active = pane_ids[(idx + 1) % len(pane_ids)]
+
+    def action_goto_definition(self):
+        if not self.lsp.running or not self.file_path:
+            self.notify("No language server running", severity="warning")
+            return
+        editor = self._get_active_editor()
+        if not editor:
+            return
+        self.lsp.did_change(editor.text)
+        row, col = editor.cursor_location
+        self.run_worker(self._do_goto_definition(row, col), exclusive=True, group="goto-def")
+
+    async def _do_goto_definition(self, row, col):
+        result = await self.lsp.goto_definition(row, col)
+        if not result:
+            self.notify("No definition found", severity="warning")
+            return
+
+        target_path = uri_to_path(result["uri"])
+        target_line = result["line"]
+        target_col = result["col"]
+
+        # open the file (or switch to its tab)
+        self._open_file(target_path)
+
+        # jump to the definition location after the tab loads
+        def _jump():
+            editor = self._get_active_editor()
+            if editor:
+                editor.cursor_location = (target_line, target_col)
+                editor.focus()
+        self.call_after_refresh(_jump)
 
     async def action_quit(self):
         if self.lsp.running:
@@ -569,7 +679,7 @@ class Editor(App):
         
         filename = os.path.basename(abs_path)
         editor_id = "editor-" + hashlib.md5(abs_path.encode()).hexdigest()
-        editor = TextArea(content, show_line_numbers=True, id=editor_id)
+        editor = AxiomEditor(content, show_line_numbers=True, id=editor_id)
         
         lang = detect_language(abs_path)
         if lang:

@@ -21,6 +21,17 @@ def path_to_uri(path):
     return f"file://{path}"
 
 
+def uri_to_path(uri):
+    """Convert a file:// URI back to an OS path."""
+    if not uri.startswith("file://"):
+        return uri
+    path = uri[len("file://"):]
+    # Windows: file:///C:/path → /C:/path, strip leading /
+    if len(path) > 2 and path[0] == "/" and path[2] == ":":
+        path = path[1:]
+    return path.replace("/", os.sep)
+
+
 class LspClient:
 
     def __init__(self):
@@ -61,6 +72,9 @@ class LspClient:
                 "textDocument": {
                     "completion": {
                         "completionItem": {"snippetSupport": False},
+                    },
+                    "definition": {
+                        "dynamicRegistration": False,
                     },
                 },
             },
@@ -145,6 +159,44 @@ class LspClient:
             completions.append({"label": label, "insert": insert})
 
         return completions
+
+    async def goto_definition(self, line, col):
+        if not self._uri or not self.running:
+            return None
+
+        try:
+            result = await asyncio.wait_for(
+                self._request("textDocument/definition", {
+                    "textDocument": {"uri": self._uri},
+                    "position": {"line": line, "character": col},
+                }),
+                timeout=5,
+            )
+        except Exception:
+            return None
+
+        if not result:
+            return None
+
+        # result can be Location, Location[], or LocationLink[]
+        target = result[0] if isinstance(result, list) else result
+
+        # LocationLink has targetUri, Location has uri
+        if "targetUri" in target:
+            uri = target["targetUri"]
+            pos = target.get("targetSelectionRange",
+                             target.get("targetRange", {})).get(
+                                 "start", {"line": 0, "character": 0})
+        else:
+            uri = target.get("uri", "")
+            pos = target.get("range", {}).get(
+                "start", {"line": 0, "character": 0})
+
+        return {
+            "uri": uri,
+            "line": pos.get("line", 0),
+            "col": pos.get("character", 0),
+        }
 
     # --- json-rpc internals ---
 
