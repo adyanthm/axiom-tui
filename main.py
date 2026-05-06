@@ -86,6 +86,25 @@ class AxiomEditor(TextArea):
         self.tab_behavior = "indent"
 
     async def _on_key(self, event):
+        if event.key in ("tab", "enter", "up", "down"):
+            try:
+                menu = self.app.query_one("#completion-menu")
+                if hasattr(menu, "visible") and menu.visible:
+                    if event.key == "up":
+                        menu.move_up()
+                    elif event.key == "down":
+                        menu.move_down()
+                    elif event.key in ("enter", "tab"):
+                        item = menu.selected_item()
+                        if item:
+                            self.app._insert_completion(item["insert"])
+                        menu.hide()
+                    event.prevent_default()
+                    event.stop()
+                    return
+            except Exception:
+                pass
+
         if not self.read_only and event.key == "enter":
             event.stop()
             event.prevent_default()
